@@ -64,7 +64,7 @@ class Screen:
 					self.sbar.addstr(' merge process)')
 				else:
 					self.sbar.addstr(str(jobcount), curses.A_BOLD)
-					self.sbar.addstr(' parallel merges')
+					self.sbar.addstr(' parallel merges)')
 			self.sbar.refresh()
 
 			if jobcount > 0:
