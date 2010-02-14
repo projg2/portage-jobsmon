@@ -79,8 +79,7 @@ class Screen:
 						w.win = curses.newwin(jobrows - 1, width, starty, 0)
 						w.win.idlok(1)
 						w.win.scrollok(1)
-						w.win.addstr(0, 0, w.backlog)
-						w.win.refresh()
+						self.append(w, w.backlog, True)
 
 						starty += jobrows
 						w.nwin = curses.newwin(1, width, starty - 1, 0)
@@ -95,9 +94,10 @@ class Screen:
 
 			self.redrawing = False
 
-	def append(self, w, text):
-		bl = w.backlog + text
-		w.backlog = bl[-self.backloglen:]
+	def append(self, w, text, omitbacklog = False):
+		if not omitbacklog:
+			bl = w.backlog + text
+			w.backlog = bl[-self.backloglen:]
 
 		if w.win is not None:
 			w.win.addstr(text)
