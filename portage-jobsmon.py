@@ -105,7 +105,8 @@ class FileTailer:
 		except OSError:
 			pass
 		else:
-			self.scr.append(self, data)
+			if len(data) > 0:
+				self.scr.append(self, data)
 
 def main(cscr):
 	dir = '%s/portage' % portage.settings['PORTAGE_TMPDIR']
