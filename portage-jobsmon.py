@@ -152,6 +152,7 @@ def main(cscr):
 				f()
 
 		scr.redraw()
+		time.sleep(0.3)
 
 if __name__ == "__main__":
 	try:
