@@ -69,8 +69,8 @@ class Screen:
 
 			if jobcount > 0:
 				jobrows = (height - 1) / jobcount
-				if jobrows < 5:
-					jobrows = 5
+				if jobrows < 4:
+					jobrows = 4
 					jobcount = (height - 1) / jobrows
 
 				starty = 0
@@ -79,6 +79,9 @@ class Screen:
 						w.win = curses.newwin(jobrows - 1, width, starty, 0)
 						w.win.idlok(1)
 						w.win.scrollok(1)
+
+						w.newline = False
+						w.win.move(0, 0)
 						self.append(w, w.backlog, True)
 
 						starty += jobrows
@@ -100,6 +103,13 @@ class Screen:
 			w.backlog = bl[-self.backloglen:]
 
 		if w.win is not None:
+			# delay newlines to avoid wasting vertical space
+			if w.newline:
+				w.win.addstr('\n')
+			w.newline = text.endswith('\n')
+			if w.newline:
+				text = text[:-1]
+
 			w.win.addstr(text)
 			w.win.refresh()
 
