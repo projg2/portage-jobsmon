@@ -136,20 +136,21 @@ def main(cscr):
 				assert(fn.startswith(dir))
 				assert(fn.endswith('.portage_lockfile'))
 				pkg = ''.join(fn[len(dir)+1:-17].split('.', 1))
-				logfn = '%s/%s/temp/build.log' % (dir, pkg)
+				tempdir = '%s/%s/temp/' % (dir, pkg)
+				logfn = '%s/build.log' % tempdir
 				if logfn not in mlist.keys():
 					try:
 						lockst = os.stat(fn)
+						envst = os.stat('%s/environment' % tempdir)
+						# make sure env was created after lockfile
+						# (avoid catching old build directory)
+						if envst.st_ctime < lockst.st_ctime:
+							continue
 						f = open(logfn, 'r')
-					except OSError: # lockfile disappeared? logfile not yet created?
+					except OSError: # lockfile disappeared? env not yet created?
 						continue
 					else:
-						logst = os.fstat(f.fileno())
-						if logst.st_ctime < lockst.st_ctime: # old logfile?
-							f.close()
-							continue
-						else:
-							mlist[logfn] = FileTailer(f, pkg, scr)
+						mlist[logfn] = FileTailer(f, pkg, scr)
 				nlist.append(logfn)
 
 			for fn in mlist.keys():
