@@ -7,11 +7,8 @@ import portage
 
 from glob import glob
 
-import time
+import os, time
 import curses
-
-# sorry for that dep, will drop it ASAP
-import follow
 
 class Screen:
 	def __init__(self, root):
@@ -114,20 +111,16 @@ class Screen:
 			w.win.refresh()
 
 class FileTailer:
-	def __init__(self, fn, pkg, scr):
-		self.follow = follow.Follow(fn, True, 3)
+	def __init__(self, f, pkg, scr):
+		self.file = f
 		self.pkg = pkg
 		self.scr = scr
 		scr.addwin(self)
 
 	def __call__(self):
-		try:
-			data = self.follow.read()
-		except OSError:
-			pass
-		else:
-			if len(data) > 0:
-				self.scr.append(self, data)
+		data = self.file.read()
+		if len(data) > 0:
+			self.scr.append(self, data)
 
 def main(cscr):
 	dir = '%s/portage' % portage.settings['PORTAGE_TMPDIR']
@@ -143,13 +136,21 @@ def main(cscr):
 				assert(fn.startswith(dir))
 				assert(fn.endswith('.portage_lockfile'))
 				pkg = ''.join(fn[len(dir)+1:-17].split('.', 1))
-				fn = '%s/%s/temp/build.log' % (dir, pkg)
-				if fn not in mlist.keys():
+				logfn = '%s/%s/temp/build.log' % (dir, pkg)
+				if logfn not in mlist.keys():
 					try:
-						mlist[fn] = FileTailer(fn, pkg, scr)
-					except IOError:
+						lockst = os.stat(fn)
+						f = open(logfn, 'r')
+					except OSError: # lockfile disappeared? logfile not yet created?
 						continue
-				nlist.append(fn)
+					else:
+						logst = os.fstat(f.fileno())
+						if logst.st_ctime < lockst.st_ctime: # old logfile?
+							f.close()
+							continue
+						else:
+							mlist[logfn] = FileTailer(f, pkg, scr)
+				nlist.append(logfn)
 
 			for fn in mlist.keys():
 				if fn not in nlist:
