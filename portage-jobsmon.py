@@ -132,7 +132,7 @@ def main(cscr):
 			for fn in glob('%s/*/.*.portage_lockfile' % dir):
 				assert(fn.startswith(dir))
 				assert(fn.endswith('.portage_lockfile'))
-				pkg = ''.join(fn[len(dir)+1:-17].rsplit('.', 2))
+				pkg = ''.join(fn[len(dir)+1:-17].split('.', 1))
 				fn = '%s/%s/temp/build.log' % (dir, pkg)
 				if fn not in mlist.keys():
 					try:
