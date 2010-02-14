@@ -19,7 +19,10 @@ class Screen:
 		self.sbar = None
 		self.windows = []
 		self.redrawing = True
-		self.backloglen = 80*25
+
+		# [described in redraw()]
+		(height, width) = self.root.getmaxyx()
+		self.backloglen = (height - 2) * width
 
 	def addwin(self, win):
 		win.win = None
@@ -37,7 +40,9 @@ class Screen:
 	def redraw(self):
 		if self.redrawing:
 			(height, width) = self.root.getmaxyx()
-			self.backloglen = height * width
+			# get so much backlog so we could fill in the whole window
+			# if a merge becomes the only one left
+			self.backloglen = (height - 2) * width
 			jobcount = len(self.windows)
 
 			del self.sbar
