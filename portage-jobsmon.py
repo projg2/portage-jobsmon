@@ -69,23 +69,29 @@ class Screen:
 
 			if jobcount > 0:
 				jobrows = (height - 1) / jobcount
-				if jobrows < 4:
-					# XXX
-					pass
+				if jobrows < 5:
+					jobrows = 5
+					jobcount = (height - 1) / jobrows
 
 				starty = 0
 				for w in self.windows:
-					w.win = curses.newwin(jobrows - 1, width, starty, 0)
-					w.win.idlok(1)
-					w.win.scrollok(1)
-					w.win.addstr(0, 0, w.backlog)
-					w.win.refresh()
+					if jobcount > 0:
+						w.win = curses.newwin(jobrows - 1, width, starty, 0)
+						w.win.idlok(1)
+						w.win.scrollok(1)
+						w.win.addstr(0, 0, w.backlog)
+						w.win.refresh()
 
-					starty += jobrows
-					w.nwin = curses.newwin(1, width, starty - 1, 0)
-					w.nwin.bkgd(' ', curses.A_REVERSE)
-					w.nwin.addstr(0, 0, '[%s]' % w.pkg)
-					w.nwin.refresh()
+						starty += jobrows
+						w.nwin = curses.newwin(1, width, starty - 1, 0)
+						w.nwin.bkgd(' ', curses.A_REVERSE)
+						w.nwin.addstr(0, 0, '[%s]' % w.pkg)
+						w.nwin.refresh()
+					else: # job won't fit on the screen
+						w.win = None
+						w.nwin = None
+
+					jobcount -= 1
 
 			self.redrawing = False
 
