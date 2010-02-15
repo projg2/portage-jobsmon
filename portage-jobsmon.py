@@ -7,7 +7,7 @@ import portage
 
 from glob import glob
 
-import os, time
+import os, time, fcntl, errno
 import curses
 
 class Screen:
@@ -135,12 +135,34 @@ def main(cscr):
 			for fn in glob('%s/*/.*.portage_lockfile' % dir):
 				assert(fn.startswith(dir))
 				assert(fn.endswith('.portage_lockfile'))
-				pkg = ''.join(fn[len(dir)+1:-17].split('.', 1))
-				tempdir = '%s/%s/temp/' % (dir, pkg)
-				logfn = '%s/build.log' % tempdir
-				if logfn not in mlist.keys():
+
+				if fn not in mlist.keys():
 					try:
-						lockst = os.stat(fn)
+						lockf = open(fn, 'r+')
+					except OSError:
+						continue
+
+					try:
+						fcntl.lockf(lockf.fileno(), fcntl.LOCK_EX|fcntl.LOCK_NB)
+					except IOError as e:
+						if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
+							pass
+						else:
+							raise
+					else: # file not locked? probably stale
+						fcntl.lockf(lockf.fileno(), fcntl.LOCK_UN)
+						lockf.close()
+						continue
+
+					pkg = ''.join(fn[len(dir)+1:-17].split('.', 1))
+					tempdir = '%s/%s/temp/' % (dir, pkg)
+					logfn = '%s/build.log' % tempdir
+
+					try:
+						try:
+							lockst = os.fstat(lockf.fileno())
+						finally:
+							lockf.close()
 						envst = os.stat('%s/environment' % tempdir)
 						# make sure env was created after lockfile
 						# (avoid catching old build directory)
@@ -150,8 +172,8 @@ def main(cscr):
 					except OSError: # lockfile disappeared? env not yet created?
 						continue
 					else:
-						mlist[logfn] = FileTailer(f, pkg, scr)
-				nlist.append(logfn)
+						mlist[fn] = FileTailer(f, pkg, scr)
+				nlist.append(fn)
 
 			for fn in mlist.keys():
 				if fn not in nlist:
