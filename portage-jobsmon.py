@@ -67,13 +67,23 @@ class Screen:
 
 		if jobcount > 0:
 			jobrows = (height - 1) / jobcount
+			jobrowsleft = (height - 1) % jobcount
 			if jobrows < 4:
 				jobrows = 4
 				jobcount = (height - 1) / jobrows
+				jobrowsleft = (height - 1) % jobcount
+			if jobrowsleft > 0:
+				jobrowsleft += 1
+				jobrows += 1
 
 			starty = 0
 			for w in self.windows:
 				if jobcount > 0:
+					if jobrowsleft > 0:
+						jobrowsleft -= 1
+						if jobrowsleft == 0:
+							jobrows -= 1
+
 					w.win = curses.newwin(jobrows - 1, width, starty, 0)
 					w.win.idlok(1)
 					w.win.scrollok(1)
@@ -87,11 +97,11 @@ class Screen:
 					w.nwin.bkgd(' ', curses.A_REVERSE)
 					w.nwin.addstr(0, 0, '[%s]' % w.pkg)
 					w.nwin.refresh()
+
+					jobcount -= 1
 				else: # job won't fit on the screen
 					w.win = None
 					w.nwin = None
-
-				jobcount -= 1
 
 	def append(self, w, text, omitbacklog = False):
 		if not omitbacklog:
