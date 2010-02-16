@@ -5,9 +5,7 @@
 
 import portage
 
-from glob import glob
-
-import os, time, fcntl, errno
+import pyinotify
 import curses
 
 class Screen:
@@ -15,84 +13,85 @@ class Screen:
 		self.root = root
 		self.sbar = None
 		self.windows = []
-		self.redrawing = True
+		self.redraw()
 
-		# [described in redraw()]
-		(height, width) = self.root.getmaxyx()
-		self.backloglen = (height - 2) * width
-
-	def addwin(self, win):
+	def addwin(self, win, pkg):
 		win.win = None
 		win.nwin = None
+		win.pkg = pkg
 		win.backlog = ''
 		self.windows.append(win)
-		self.redrawing = True
+		self.redraw()
 
 	def delwin(self, win):
 		del win.win
 		del win.nwin
 		self.windows.remove(win)
-		self.redrawing = True
+		self.redraw()
+
+	def findwin(self, pkg):
+		for w in self.windows:
+			if w.pkg == pkg:
+				return w
+
+		return None
 
 	def redraw(self):
-		if self.redrawing:
-			(height, width) = self.root.getmaxyx()
-			# get so much backlog so we could fill in the whole window
-			# if a merge becomes the only one left
-			self.backloglen = (height - 2) * width
-			jobcount = len(self.windows)
+		(height, width) = self.root.getmaxyx()
+		# get so much backlog so we could fill in the whole window
+		# if a merge becomes the only one left
+		self.backloglen = (height - 2) * width
+		jobcount = len(self.windows)
 
-			del self.sbar
-			for w in self.windows:
-				del w.win
-				del w.nwin
+		del self.sbar
+		for w in self.windows:
+			del w.win
+			del w.nwin
 
-			self.root.clear()
-			self.root.refresh()
+		self.root.clear()
+		self.root.refresh()
 
-			self.sbar = curses.newwin(1, width, height - 1, 0)
-			self.sbar.addstr(0, 0, 'portage-jobsmon.py', curses.A_BOLD)
-			if jobcount == 0:
-				self.sbar.addstr(' (waiting for some merge to start)')
+		self.sbar = curses.newwin(1, width, height - 1, 0)
+		self.sbar.addstr(0, 0, 'portage-jobsmon.py', curses.A_BOLD)
+		if jobcount == 0:
+			self.sbar.addstr(' (waiting for some merge to start)')
+		else:
+			self.sbar.addstr(' (monitoring ')
+			if jobcount == 1:
+				self.sbar.addstr('single', curses.A_BOLD)
+				self.sbar.addstr(' merge process)')
 			else:
-				self.sbar.addstr(' (monitoring ')
-				if jobcount == 1:
-					self.sbar.addstr('single', curses.A_BOLD)
-					self.sbar.addstr(' merge process)')
-				else:
-					self.sbar.addstr(str(jobcount), curses.A_BOLD)
-					self.sbar.addstr(' parallel merges)')
-			self.sbar.refresh()
+				self.sbar.addstr(str(jobcount), curses.A_BOLD)
+				self.sbar.addstr(' parallel merges)')
+		self.sbar.refresh()
 
-			if jobcount > 0:
-				jobrows = (height - 1) / jobcount
-				if jobrows < 4:
-					jobrows = 4
-					jobcount = (height - 1) / jobrows
+		if jobcount > 0:
+			jobrows = (height - 1) / jobcount
+			if jobrows < 4:
+				jobrows = 4
+				jobcount = (height - 1) / jobrows
 
-				starty = 0
-				for w in self.windows:
-					if jobcount > 0:
-						w.win = curses.newwin(jobrows - 1, width, starty, 0)
-						w.win.idlok(1)
-						w.win.scrollok(1)
+			starty = 0
+			for w in self.windows:
+				if jobcount > 0:
+					w.win = curses.newwin(jobrows - 1, width, starty, 0)
+					w.win.idlok(1)
+					w.win.scrollok(1)
 
-						w.newline = False
-						w.win.move(0, 0)
-						self.append(w, w.backlog, True)
+					w.newline = False
+					w.win.move(0, 0)
+					self.append(w, w.backlog, True)
 
-						starty += jobrows
-						w.nwin = curses.newwin(1, width, starty - 1, 0)
-						w.nwin.bkgd(' ', curses.A_REVERSE)
-						w.nwin.addstr(0, 0, '[%s]' % w.pkg)
-						w.nwin.refresh()
-					else: # job won't fit on the screen
-						w.win = None
-						w.nwin = None
+					starty += jobrows
+					w.nwin = curses.newwin(1, width, starty - 1, 0)
+					w.nwin.bkgd(' ', curses.A_REVERSE)
+					w.nwin.addstr(0, 0, '[%s]' % w.pkg)
+					w.nwin.refresh()
+				else: # job won't fit on the screen
+					w.win = None
+					w.nwin = None
 
-					jobcount -= 1
-
-			self.redrawing = False
+				jobcount -= 1
 
 	def append(self, w, text, omitbacklog = False):
 		if not omitbacklog:
@@ -111,82 +110,101 @@ class Screen:
 			w.win.refresh()
 
 class FileTailer:
-	def __init__(self, f, pkg, scr):
-		self.file = f
-		self.pkg = pkg
-		self.scr = scr
-		scr.addwin(self)
+	def __init__(self, fn):
+		self.fn = fn
+		self.file = None
 
-	def __call__(self):
+		self.reopen()
+
+	def __del__(self):
+		if self.file is not None:
+			self.file.close()
+
+	def reopen(self):
+		if self.file is not None:
+			self.file.close()
+		self.file = open(self.fn, 'r')
+
+	def pull(self):
 		data = self.file.read()
-		if len(data) > 0:
-			self.scr.append(self, data)
+		if len(data) == 0:
+			data = None
+		return data
 
 def main(cscr):
-	dir = '%s/portage' % portage.settings['PORTAGE_TMPDIR']
+	tempdir = portage.settings['PORTAGE_TMPDIR']
+	pdir = '%s/portage' % tempdir
 	scr = Screen(cscr)
-	mlist = {}
-	ts = 0
 
-	while True:
-		if time.time() - ts > 3:
-			ts = time.time()
-			nlist = []
-			for fn in glob('%s/*/.*.portage_lockfile' % dir):
-				assert(fn.startswith(dir))
-				assert(fn.endswith('.portage_lockfile'))
+	def ppath(dir):
+		if not dir.startswith(pdir):
+			return None
+		dir = dir[len(pdir)+1:].split('/')
+		return dir
 
-				if fn not in mlist.keys():
-					try:
-						lockf = open(fn, 'r+')
-					except OSError:
-						continue
+	def pfilter(dir):
+		if dir == tempdir:
+			return False
+		dir = ppath(dir)
+		if dir is None:
+			return True
+		elif len(dir) == 3:
+			if dir[2] != 'temp':
+				return True
+		elif len(dir) > 3:
+			return True
 
-					try:
-						fcntl.lockf(lockf.fileno(), fcntl.LOCK_EX|fcntl.LOCK_NB)
-					except IOError as e:
-						if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
-							pass
-						else:
-							raise
-					else: # file not locked? probably stale
-						fcntl.lockf(lockf.fileno(), fcntl.LOCK_UN)
-						lockf.close()
-						continue
+		return False
 
-					pkg = ''.join(fn[len(dir)+1:-17].split('.', 1))
-					tempdir = '%s/%s/temp/' % (dir, pkg)
-					logfn = '%s/build.log' % tempdir
+	wm = pyinotify.WatchManager()
 
-					try:
-						try:
-							lockst = os.fstat(lockf.fileno())
-						finally:
-							lockf.close()
-						envst = os.stat('%s/environment' % tempdir)
-						# make sure env was created after lockfile
-						# (avoid catching old build directory)
-						if envst.st_ctime < lockst.st_ctime:
-							continue
-						f = open(logfn, 'r')
-					except OSError: # lockfile disappeared? env not yet created?
-						continue
-					else:
-						mlist[fn] = FileTailer(f, pkg, scr)
-				nlist.append(fn)
+	def window_add(dir):
+		pkg = '/'.join(dir[0:2])
+		dir.insert(0, pdir)
+		fn = '/'.join(dir)
 
-			for fn in mlist.keys():
-				if fn not in nlist:
-					scr.delwin(mlist[fn])
-					del mlist[fn]
-				else:
-					mlist[fn]()
+		w = scr.findwin(pkg)
+		if w is None:
+			scr.addwin(FileTailer(fn), pkg)
+
+			lockfn = '%s/%s/.%s.portage_lockfile' % tuple(dir[0:3])
+			wm.add_watch(lockfn, pyinotify.IN_CLOSE_WRITE)
 		else:
-			for f in mlist.values():
-				f()
+			w.reopen()
+		wm.add_watch(fn, pyinotify.IN_MODIFY)
 
-		scr.redraw()
-		time.sleep(0.3)
+	class Inotifier(pyinotify.ProcessEvent):
+		def process_IN_CREATE(self, ev):
+			if not ev.dir:
+				dir = ppath(ev.pathname)
+				if dir is not None:
+					if len(dir) == 4 and dir[2] == 'temp' and dir[3] == 'build.log':
+						window_add(dir)
+
+		def process_IN_MODIFY(self, ev):
+			dir = ppath(ev.pathname)
+			pkg = '/'.join(dir[0:2])
+
+			w = scr.findwin(pkg)
+			if w is not None:
+				data = w.pull()
+				if data is not None:
+					scr.append(w, data)
+
+		def process_IN_CLOSE_WRITE(self, ev):
+			dir = ppath(ev.pathname)
+			pkg = '%s/%s' % (dir[0], dir[1][1:-17])
+
+			w = scr.findwin(pkg)
+			if w is not None:
+				scr.delwin(w)
+				del w
+
+	np = Inotifier()
+	n = pyinotify.Notifier(wm, np)
+	wm.add_watch(tempdir, pyinotify.IN_CREATE,
+			rec=True, auto_add=True, exclude_filter=pfilter)
+	n.loop()
 
 if __name__ == "__main__":
 	try:
