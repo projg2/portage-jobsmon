@@ -14,10 +14,11 @@ from optparse import OptionParser
 import sys
 
 class Screen:
-	def __init__(self, root):
+	def __init__(self, root, firstpdir):
 		self.root = root
 		self.sbar = None
 		self.windows = []
+		self.firstpdir = firstpdir
 		self.redraw()
 
 	def addwin(self, win, basedir):
@@ -100,7 +101,10 @@ class Screen:
 					starty += jobrows
 					w.nwin = curses.newwin(1, width, starty - 1, 0)
 					w.nwin.bkgd(' ', curses.A_REVERSE)
-					w.nwin.addstr(0, 0, '[%s]' % '/'.join(w.basedir.rsplit('/', 2)[1:3]))
+					dir = w.basedir.rsplit('/', 2)
+					w.nwin.addstr(0, 0, '[%s]' % '/'.join(dir[1:3]))
+					if dir[0] != self.firstpdir:
+						w.nwin.addstr(' (in %s)' % dir[0], curses.A_DIM)
 					w.nwin.refresh()
 
 					jobcount -= 1
@@ -152,8 +156,9 @@ def cursesmain(cscr, opts, args):
 	else:
 		tempdir = opts.tempdir
 	pdir = ['%s/portage' % x for x in tempdir]
+	firstpdir = pdir[0] # the default one
 	pdir.sort(key=len, reverse=True)
-	scr = Screen(cscr)
+	scr = Screen(cscr, firstpdir)
 
 	def ppath(dir):
 		for pd in pdir:
