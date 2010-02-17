@@ -147,7 +147,10 @@ class FileTailer:
 		return data
 
 def cursesmain(cscr, opts, args):
-	tempdir = portage.settings['PORTAGE_TMPDIR']
+	if opts.tempdir:
+		tempdir = opts.tempdir
+	else:
+		tempdir = portage.settings['PORTAGE_TMPDIR']
 	pdir = '%s/portage' % tempdir
 	scr = Screen(cscr)
 
@@ -226,6 +229,8 @@ def main(argv):
 			version = '%%prog %s' % MY_PV,
 			description = 'Monitor parallel emerge builds and display logs on a split-screen basis.'
 		)
+	parser.add_option('-t', '--tempdir', action='store', dest='tempdir',
+			help="Temporary directory to watch (without the 'portage/' suffix); if not specified, defaults to ${PORTAGE_TEMPDIR}")
 	(opts, args) = parser.parse_args(args = argv[1:])
 
 	try:
