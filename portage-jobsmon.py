@@ -147,22 +147,25 @@ class FileTailer:
 		return data
 
 def cursesmain(cscr, opts, args):
-	if opts.tempdir:
-		tempdir = opts.tempdir
+	if opts.tempdir is None:
+		tempdir = [portage.settings['PORTAGE_TMPDIR']]
 	else:
-		tempdir = portage.settings['PORTAGE_TMPDIR']
-	pdir = '%s/portage' % tempdir
+		tempdir = opts.tempdir
+	pdir = ['%s/portage' % x for x in tempdir]
+	pdir.sort(key=len, reverse=True)
 	scr = Screen(cscr)
 
 	def ppath(dir):
-		if not dir.startswith(pdir):
-			return None
-		dir = dir[len(pdir)+1:].split('/')
-		dir.insert(0, pdir)
-		return dir
+		for pd in pdir:
+			if not dir.startswith(pd):
+				continue
+			dir = dir[len(pd)+1:].split('/')
+			dir.insert(0, pd)
+			return dir
+		return None
 
 	def pfilter(dir):
-		if dir == tempdir:
+		if dir in tempdir:
 			return False
 		dir = ppath(dir)
 		if dir is None:
@@ -220,8 +223,9 @@ def cursesmain(cscr, opts, args):
 
 	np = Inotifier()
 	n = pyinotify.Notifier(wm, np)
-	wm.add_watch(tempdir, pyinotify.IN_CREATE,
-			rec=True, auto_add=True, exclude_filter=pfilter)
+	for t in tempdir:
+		wm.add_watch(t, pyinotify.IN_CREATE,
+				rec=True, auto_add=True, exclude_filter=pfilter)
 	n.loop()
 
 def main(argv):
@@ -229,8 +233,8 @@ def main(argv):
 			version = '%%prog %s' % MY_PV,
 			description = 'Monitor parallel emerge builds and display logs on a split-screen basis.'
 		)
-	parser.add_option('-t', '--tempdir', action='store', dest='tempdir',
-			help="Temporary directory to watch (without the 'portage/' suffix); if not specified, defaults to ${PORTAGE_TEMPDIR}")
+	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
+			help="Temporary directory to watch (without the 'portage/' suffix); if specified multiple times, all specified directories will be watched; if not specified, defaults to ${PORTAGE_TEMPDIR}")
 	(opts, args) = parser.parse_args(args = argv[1:])
 
 	try:
