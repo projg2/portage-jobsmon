@@ -3,10 +3,15 @@
 # Monitor current builds and display their logs on split-screen basis
 # (C) 2010 Michał Górny, distributed under the terms of the 3-clause BSD license
 
+MY_PV='0.1'
+
 import portage
 
 import pyinotify
 import curses
+
+from optparse import OptionParser
+import sys
 
 class Screen:
 	def __init__(self, root):
@@ -141,7 +146,7 @@ class FileTailer:
 			data = None
 		return data
 
-def main(cscr):
+def cursesmain(cscr, opts, args):
 	tempdir = portage.settings['PORTAGE_TMPDIR']
 	pdir = '%s/portage' % tempdir
 	scr = Screen(cscr)
@@ -216,9 +221,18 @@ def main(cscr):
 			rec=True, auto_add=True, exclude_filter=pfilter)
 	n.loop()
 
-if __name__ == "__main__":
+def main(argv):
+	parser = OptionParser(
+			version = '%%prog %s' % MY_PV,
+			description = 'Monitor parallel emerge builds and display logs on a split-screen basis.'
+		)
+	(opts, args) = parser.parse_args(args = argv[1:])
+
 	try:
-		curses.wrapper(main)
+		curses.wrapper(cursesmain, opts, args)
 	except KeyboardInterrupt:
 		pass
+
+if __name__ == "__main__":
+	sys.exit(main(sys.argv))
 
