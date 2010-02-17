@@ -15,6 +15,8 @@ import sys
 
 class Screen:
 	def __init__(self, root, firstpdir):
+		curses.use_default_colors()
+
 		self.root = root
 		self.sbar = None
 		self.windows = []
