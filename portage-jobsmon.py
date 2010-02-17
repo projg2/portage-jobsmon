@@ -20,10 +20,10 @@ class Screen:
 		self.windows = []
 		self.redraw()
 
-	def addwin(self, win, pkg):
+	def addwin(self, win, basedir):
 		win.win = None
 		win.nwin = None
-		win.pkg = pkg
+		win.basedir = basedir
 		win.backlog = ''
 		self.windows.append(win)
 		self.redraw()
@@ -34,9 +34,9 @@ class Screen:
 		self.windows.remove(win)
 		self.redraw()
 
-	def findwin(self, pkg):
+	def findwin(self, basedir):
 		for w in self.windows:
-			if w.pkg == pkg:
+			if w.basedir == basedir:
 				return w
 
 		return None
@@ -100,7 +100,7 @@ class Screen:
 					starty += jobrows
 					w.nwin = curses.newwin(1, width, starty - 1, 0)
 					w.nwin.bkgd(' ', curses.A_REVERSE)
-					w.nwin.addstr(0, 0, '[%s]' % w.pkg)
+					w.nwin.addstr(0, 0, '[%s]' % '/'.join(w.basedir.rsplit('/', 2)[1:3]))
 					w.nwin.refresh()
 
 					jobcount -= 1
@@ -158,6 +158,7 @@ def cursesmain(cscr, opts, args):
 		if not dir.startswith(pdir):
 			return None
 		dir = dir[len(pdir)+1:].split('/')
+		dir.insert(0, pdir)
 		return dir
 
 	def pfilter(dir):
@@ -166,10 +167,10 @@ def cursesmain(cscr, opts, args):
 		dir = ppath(dir)
 		if dir is None:
 			return True
-		elif len(dir) == 3:
-			if dir[2] != 'temp':
+		elif len(dir) == 4:
+			if dir[3] != 'temp':
 				return True
-		elif len(dir) > 3:
+		elif len(dir) > 4:
 			return True
 
 		return False
@@ -177,13 +178,12 @@ def cursesmain(cscr, opts, args):
 	wm = pyinotify.WatchManager()
 
 	def window_add(dir):
-		pkg = '/'.join(dir[0:2])
-		dir.insert(0, pdir)
+		basedir = '/'.join(dir[0:3])
 		fn = '/'.join(dir)
 
-		w = scr.findwin(pkg)
+		w = scr.findwin(basedir)
 		if w is None:
-			scr.addwin(FileTailer(fn), pkg)
+			scr.addwin(FileTailer(fn), basedir)
 
 			lockfn = '%s/%s/.%s.portage_lockfile' % tuple(dir[0:3])
 			wm.add_watch(lockfn, pyinotify.IN_CLOSE_WRITE)
@@ -196,14 +196,14 @@ def cursesmain(cscr, opts, args):
 			if not ev.dir:
 				dir = ppath(ev.pathname)
 				if dir is not None:
-					if len(dir) == 4 and dir[2] == 'temp' and dir[3] == 'build.log':
+					if len(dir) == 5 and dir[3] == 'temp' and dir[4] == 'build.log':
 						window_add(dir)
 
 		def process_IN_MODIFY(self, ev):
 			dir = ppath(ev.pathname)
-			pkg = '/'.join(dir[0:2])
+			basedir = '/'.join(dir[0:3])
 
-			w = scr.findwin(pkg)
+			w = scr.findwin(basedir)
 			if w is not None:
 				data = w.pull()
 				if data is not None:
@@ -211,9 +211,9 @@ def cursesmain(cscr, opts, args):
 
 		def process_IN_CLOSE_WRITE(self, ev):
 			dir = ppath(ev.pathname)
-			pkg = '%s/%s' % (dir[0], dir[1][1:-17])
+			basedir = '%s/%s/%s' % (dir[0], dir[1], dir[2][1:-17])
 
-			w = scr.findwin(pkg)
+			w = scr.findwin(basedir)
 			if w is not None:
 				scr.delwin(w)
 				del w
