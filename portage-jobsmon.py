@@ -11,7 +11,7 @@ import pyinotify
 import curses
 
 from optparse import OptionParser
-import sys, time
+import sys, time, fcntl, errno
 
 class Screen:
 	def __init__(self, root, firstpdir):
@@ -213,6 +213,25 @@ def cursesmain(cscr, opts, args):
 		return False
 
 	wm = pyinotify.WatchManager()
+
+	def check_lock(path):
+		try:
+			lockf = open(path, 'r+')
+		except OSError:
+			return False
+
+		try:
+			fcntl.lockf(lockf.fileno(), fcntl.LOCK_EX|fcntl.LOCK_NB)
+		except IOError as e:
+			lockf.close()
+			if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
+				return True
+			else:
+				raise
+		else: # file not locked? probably stale
+			fcntl.lockf(lockf.fileno(), fcntl.LOCK_UN)
+			lockf.close()
+		return False
 
 	def window_add(dir):
 		basedir = '/'.join(dir[0:3])
