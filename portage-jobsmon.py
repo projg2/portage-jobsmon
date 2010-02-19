@@ -8,7 +8,7 @@ MY_PV='0.1'
 import portage
 
 import pyinotify
-import curses
+import curses, locale
 
 from optparse import OptionParser
 import sys, time, fcntl, errno, glob
@@ -322,6 +322,7 @@ def main(argv):
 			help='The timeout of the poll() call, and thus the max time between consecutive timer loop calls (def: 2 s)')
 	(opts, args) = parser.parse_args(args = argv[1:])
 
+	locale.setlocale(locale.LC_ALL, '')
 	try:
 		curses.wrapper(cursesmain, opts, args)
 	except KeyboardInterrupt:
