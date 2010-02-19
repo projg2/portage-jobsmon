@@ -228,12 +228,15 @@ def cursesmain(cscr, opts, args):
 				scr.delwin(w)
 				del w
 
+	def timeriter(sth):
+		pass
+
 	np = Inotifier()
-	n = pyinotify.Notifier(wm, np)
+	n = pyinotify.Notifier(wm, np, timeout = opts.timeout * 1000)
 	for t in tempdir:
 		wm.add_watch(t, pyinotify.IN_CREATE,
 				rec=True, auto_add=True, exclude_filter=pfilter)
-	n.loop()
+	n.loop(callback = timeriter)
 
 def main(argv):
 	parser = OptionParser(
@@ -242,6 +245,8 @@ def main(argv):
 		)
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
 			help="Temporary directory to watch (without the 'portage/' suffix); if specified multiple times, all specified directories will be watched; if not specified, defaults to ${PORTAGE_TEMPDIR}")
+	parser.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
+			help='The timeout of the poll() call, and thus the max time between consecutive timer loop calls (def: 2 s)')
 	(opts, args) = parser.parse_args(args = argv[1:])
 
 	try:
