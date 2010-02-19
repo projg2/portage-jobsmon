@@ -11,7 +11,7 @@ import pyinotify
 import curses
 
 from optparse import OptionParser
-import sys
+import sys, time
 
 class Screen:
 	def __init__(self, root, firstpdir):
@@ -20,6 +20,7 @@ class Screen:
 		self.root = root
 		self.sbar = None
 		self.windows = []
+		self.inactive = []
 		self.firstpdir = firstpdir
 		self.redraw()
 
@@ -28,6 +29,7 @@ class Screen:
 		win.nwin = None
 		win.basedir = basedir
 		win.backlog = ''
+		win.activity = time.time()
 		self.windows.append(win)
 		self.redraw()
 
@@ -35,6 +37,8 @@ class Screen:
 		del win.win
 		del win.nwin
 		self.windows.remove(win)
+		if win in self.inactive:
+			self.inactive.remove(win)
 		self.redraw()
 
 	def findwin(self, basedir):
@@ -73,6 +77,8 @@ class Screen:
 				self.sbar.addstr(' parallel merges)')
 		self.sbar.refresh()
 
+		jobcount -= len(self.inactive)
+
 		if jobcount > 0:
 			jobrows = (height - 1) / jobcount
 			jobrowsleft = (height - 1) % jobcount
@@ -86,7 +92,7 @@ class Screen:
 
 			starty = 0
 			for w in self.windows:
-				if jobcount > 0:
+				if w not in self.inactive and jobcount > 0:
 					if jobrowsleft > 0:
 						jobrowsleft -= 1
 						if jobrowsleft == 0:
@@ -113,8 +119,17 @@ class Screen:
 				else: # job won't fit on the screen
 					w.win = None
 					w.nwin = None
+		elif len(self.inactive) > 0:
+			for w in self.inactive:
+				w.win = None
+				w.nwin = None
 
 	def append(self, w, text, omitbacklog = False):
+		w.activity = time.time()
+		if w in self.inactive:
+			self.inactive.remove(w)
+			self.redraw()
+
 		if not omitbacklog:
 			bl = w.backlog + text
 			w.backlog = bl[-self.backloglen:]
@@ -129,6 +144,18 @@ class Screen:
 
 			w.win.addstr(text)
 			w.win.refresh()
+
+	def checkact(self, timeout):
+		ts = time.time()
+		redraw = False
+
+		for w in self.windows:
+			if w not in self.inactive and ts - w.activity >= timeout:
+				self.inactive.append(w)
+				redraw = True
+
+		if redraw:
+			self.redraw()
 
 class FileTailer:
 	def __init__(self, fn):
@@ -229,7 +256,8 @@ def cursesmain(cscr, opts, args):
 				del w
 
 	def timeriter(sth):
-		pass
+		if opts.inact != 0:
+			scr.checkact(opts.inact)
 
 	np = Inotifier()
 	n = pyinotify.Notifier(wm, np, timeout = opts.timeout * 1000)
@@ -243,6 +271,8 @@ def main(argv):
 			version = '%%prog %s' % MY_PV,
 			description = 'Monitor parallel emerge builds and display logs on a split-screen basis.'
 		)
+	parser.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
+			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
 			help="Temporary directory to watch (without the 'portage/' suffix); if specified multiple times, all specified directories will be watched; if not specified, defaults to ${PORTAGE_TEMPDIR}")
 	parser.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
