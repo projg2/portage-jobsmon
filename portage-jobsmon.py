@@ -11,7 +11,7 @@ import pyinotify
 import curses
 
 from optparse import OptionParser
-import sys, time, fcntl, errno
+import sys, time, fcntl, errno, glob
 
 class Screen:
 	def __init__(self, root, firstpdir):
@@ -239,13 +239,33 @@ def cursesmain(cscr, opts, args):
 
 		w = scr.findwin(basedir)
 		if w is None:
-			scr.addwin(FileTailer(fn), basedir)
+			try:
+				w = FileTailer(fn)
+			except IOError:
+				return None
+			scr.addwin(w, basedir)
 
 			lockfn = '%s/%s/.%s.portage_lockfile' % tuple(dir[0:3])
 			wm.add_watch(lockfn, pyinotify.IN_CLOSE_WRITE)
 		else:
 			w.reopen()
 		wm.add_watch(fn, pyinotify.IN_MODIFY)
+		return w
+
+	def find_locks():
+		for d in pdir:
+			for f in glob.glob('%s/*/.*.portage_lockfile' % d):
+				assert(f.startswith(d))
+				assert(f.endswith('.portage_lockfile'))
+				if check_lock(f):
+					dir = f[len(d)+1:-17].split('/.', 1)
+					dir.insert(0, d)
+					dir.extend(['temp', 'build.log'])
+					w = window_add(dir)
+					if w is not None:
+						data = w.pull()
+						if data is not None:
+							scr.append(w, data)
 
 	class Inotifier(pyinotify.ProcessEvent):
 		def process_IN_CREATE(self, ev):
@@ -280,6 +300,8 @@ def cursesmain(cscr, opts, args):
 
 	np = Inotifier()
 	n = pyinotify.Notifier(wm, np, timeout = opts.timeout * 1000)
+	if not opts.omitrunning:
+		find_locks()
 	for t in tempdir:
 		wm.add_watch(t, pyinotify.IN_CREATE,
 				rec=True, auto_add=True, exclude_filter=pfilter)
@@ -292,6 +314,8 @@ def main(argv):
 		)
 	parser.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
 			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
+	parser.add_option('-o', '--omit-running', action='store_true', dest='omitrunning', default=False,
+			help='Omit catching all running emerges during startup, watch only those started after the program')
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
 			help="Temporary directory to watch (without the 'portage/' suffix); if specified multiple times, all specified directories will be watched; if not specified, defaults to ${PORTAGE_TEMPDIR}")
 	parser.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
