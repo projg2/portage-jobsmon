@@ -10,7 +10,7 @@ import portage
 import pyinotify
 import curses, locale, re
 
-from optparse import OptionParser
+import optparse
 import sys, time, fcntl, errno, glob
 
 class Screen:
@@ -452,22 +452,26 @@ def cursesmain(cscr, opts, args):
 	n.loop(callback = timeriter)
 
 def main(argv):
-	parser = OptionParser(
+	parser = optparse.OptionParser(
 			version = '%%prog %s' % MY_PV,
 			description = 'Monitor parallel emerge builds and display logs on a split-screen basis.'
 		)
-	parser.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
-			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
 	parser.add_option('-D', '--debug', action='store_true', dest='debug', default=False,
 			help='Enable unsupported action debugging (raises exceptions when unsupported escape sequence is found)')
 	parser.add_option('-o', '--omit-running', action='store_true', dest='omitrunning', default=False,
 			help='Omit catching all running emerges during startup, watch only those started after the program')
-	parser.add_option('-p', '--pull-interval', action='store', dest='pullint', type='float', default=10,
-			help="Max interval between two consecutive pulls; forces pulling if inotify didn't notice any I/O (def: 10 s)")
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
 			help="Temporary directory to watch (without the 'portage/' suffix); if specified multiple times, all specified directories will be watched; if not specified, defaults to ${PORTAGE_TEMPDIR}")
-	parser.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
+
+	og = optparse.OptionGroup(parser, 'Fine-tuning')
+	og.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
+			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
+	og.add_option('-p', '--pull-interval', action='store', dest='pullint', type='float', default=10,
+			help="Max interval between two consecutive pulls; forces pulling if inotify didn't notice any I/O (def: 10 s)")
+	og.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
 			help='The timeout of the poll() call, and thus the max time between consecutive timer loop calls (def: 2 s)')
+
+	parser.add_option_group(og)
 	(opts, args) = parser.parse_args(args = argv[1:])
 
 	locale.setlocale(locale.LC_ALL, '')
