@@ -157,9 +157,6 @@ class Screen:
 			if w.newline:
 				text = text[:-1]
 
-			# XXX: wrap lines like terminal does
-			# (i.e. when filling the whole line, drop \n to avoid empty line)
-
 			# parse ECMA-48 CSI
 			mode = 0
 			fgcol = -1
