@@ -14,15 +14,17 @@ from optparse import OptionParser
 import sys, time, fcntl, errno, glob
 
 class Screen:
-	def __init__(self, root, firstpdir):
+	def __init__(self, root, firstpdir, debug):
 		curses.use_default_colors()
 
 		self.root = root
 		self.sbar = None
 		self.windows = []
 		self.inactive = []
+		self.colors = {}
 		self.csiregex = re.compile(r'\x1b\[((?:\d*;)*\d*[a-zA-Z@`])')
 		self.firstpdir = firstpdir
+		self.debug = debug
 		self.redraw()
 
 	def addwin(self, win, basedir):
@@ -125,6 +127,14 @@ class Screen:
 				w.win = None
 				w.nwin = None
 
+	def getcolor(self, fg, bg):
+		if (fg, bg) not in self.colors.keys():
+			n = len(self.colors) + 1
+			curses.init_pair(n, fg, bg)
+			self.colors[(fg, bg)] = n
+
+		return curses.color_pair(self.colors[(fg, bg)])
+
 	def append(self, w, text, omitbacklog = False):
 		w.activity = time.time()
 		if w in self.inactive:
@@ -143,11 +153,86 @@ class Screen:
 			if w.newline:
 				text = text[:-1]
 
-			# strip ECMA-48 CSI
+			# parse ECMA-48 CSI
+			mode = 0
+			fgcol = -1
+			bgcol = -1
 			ptext = self.csiregex.split(text)
 			for i in range(len(ptext)):
 				if i % 2 == 0:
 					w.win.addstr(ptext[i])
+				else:
+					func = ptext[i][-1]
+					args = ptext[i][:-1].split(';')
+					if func == 'm': # SGR
+						for a in [int(x) for x in args]:
+							if a == 0:
+								mode = 0
+								fgcol = -1
+								bgcol = -1
+							elif a == 1:
+								mode |= curses.A_BOLD
+							elif a == 2:
+								mode |= curses.A_DIM
+							elif a == 4:
+								mode |= curses.A_UNDERLINE
+							elif a == 5:
+								mode |= curses.A_BLINK
+							elif a == 7:
+								mode |= curses.A_REVERSE
+							elif a == 22:
+								mode &= ~(curses.A_BOLD|curses.A_DIM)
+							elif a == 24:
+								mode &= ~curses.A_UNDERLINE
+							elif a == 25:
+								mode &= ~curses.A_BLINK
+							elif a == 27:
+								mode &= ~curses.A_REVERSE
+							elif a == 30:
+								fgcol = curses.COLOR_BLACK
+							elif a == 31:
+								fgcol = curses.COLOR_RED
+							elif a == 32:
+								fgcol = curses.COLOR_GREEN
+							elif a == 33:
+								fgcol = curses.COLOR_YELLOW
+							elif a == 34:
+								fgcol = curses.COLOR_BLUE
+							elif a == 35:
+								fgcol = curses.COLOR_MAGENTA
+							elif a == 36:
+								fgcol = curses.COLOR_CYAN
+							elif a == 37:
+								fgcol = curses.COLOR_WHITE
+							elif a == 38:
+								mode |= curses.A_UNDERLINE
+								fgcol = -1
+							elif a == 39:
+								mode &= ~curses.A_UNDERLINE
+								fgcol = -1
+							elif a == 40:
+								bgcol = curses.COLOR_BLACK
+							elif a == 41:
+								bgcol = curses.COLOR_RED
+							elif a == 42:
+								bgcol = curses.COLOR_GREEN
+							elif a == 43:
+								bgcol = curses.COLOR_YELLOW
+							elif a == 44:
+								bgcol = curses.COLOR_BLUE
+							elif a == 45:
+								bgcol = curses.COLOR_MAGENTA
+							elif a == 46:
+								bgcol = curses.COLOR_CYAN
+							elif a == 47:
+								bgcol = curses.COLOR_WHITE
+							elif a == 49:
+								bgcol = -1
+							elif self.debug:
+								raise Exception('Unsupported SGR %d' % int(a))
+						w.win.attrset(mode | self.getcolor(fgcol, bgcol))
+					elif self.debug:
+						raise Exception('Unsupported func %s (args: %s)' % (func, args))
 
 			w.win.refresh()
 
@@ -193,7 +278,7 @@ def cursesmain(cscr, opts, args):
 	pdir = ['%s/portage' % x for x in tempdir]
 	firstpdir = pdir[0] # the default one
 	pdir.sort(key=len, reverse=True)
-	scr = Screen(cscr, firstpdir)
+	scr = Screen(cscr, firstpdir, opts.debug)
 
 	def ppath(dir):
 		for pd in pdir:
@@ -320,6 +405,8 @@ def main(argv):
 		)
 	parser.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
 			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
+	parser.add_option('-D', '--debug', action='store_true', dest='debug', default=False,
+			help='Enable unsupported action debugging (raises exceptions when unsupported escape sequence is found)')
 	parser.add_option('-o', '--omit-running', action='store_true', dest='omitrunning', default=False,
 			help='Omit catching all running emerges during startup, watch only those started after the program')
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
