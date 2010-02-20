@@ -283,12 +283,17 @@ class Screen:
 
 			w.win.refresh()
 
-	def checkact(self, timeout):
+	def checkact(self, acttimeout, pullinterval):
 		ts = time.time()
 		redraw = False
 
 		for w in self.windows:
-			if w not in self.inactive and ts - w.activity >= timeout:
+			if pullinterval != 0 and ts - w.pullts >= pullinterval:
+				data = w.pull()
+				if data is not None:
+					w.append(data)
+
+			if acttimeout != 0 and w not in self.inactive and ts - w.activity >= acttimeout:
 				self.inactive.append(w)
 				redraw = True
 
@@ -299,6 +304,7 @@ class FileTailer:
 	def __init__(self, fn):
 		self.fn = fn
 		self.file = None
+		self.pullts = time.time()
 
 		self.reopen()
 
@@ -312,6 +318,7 @@ class FileTailer:
 		self.file = open(self.fn, 'r')
 
 	def pull(self):
+		self.pullts = time.time()
 		data = self.file.read()
 		if len(data) == 0:
 			data = None
@@ -433,8 +440,7 @@ def cursesmain(cscr, opts, args):
 				del w
 
 	def timeriter(sth):
-		if opts.inact != 0:
-			scr.checkact(opts.inact)
+		scr.checkact(opts.inact, opts.pullint)
 
 	np = Inotifier()
 	n = pyinotify.Notifier(wm, np, timeout = opts.timeout * 1000)
@@ -456,6 +462,8 @@ def main(argv):
 			help='Enable unsupported action debugging (raises exceptions when unsupported escape sequence is found)')
 	parser.add_option('-o', '--omit-running', action='store_true', dest='omitrunning', default=False,
 			help='Omit catching all running emerges during startup, watch only those started after the program')
+	parser.add_option('-p', '--pull-interval', action='store', dest='pullint', type='float', default=10,
+			help="Max interval between two consecutive pulls; forces pulling if inotify didn't notice any I/O (def: 10 s)")
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
 			help="Temporary directory to watch (without the 'portage/' suffix); if specified multiple times, all specified directories will be watched; if not specified, defaults to ${PORTAGE_TEMPDIR}")
 	parser.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
