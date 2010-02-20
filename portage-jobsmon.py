@@ -153,6 +153,9 @@ class Screen:
 			if w.newline:
 				text = text[:-1]
 
+			# XXX: wrap lines like terminal does
+			# (i.e. when filling the whole line, drop \n to avoid empty line)
+
 			# parse ECMA-48 CSI
 			mode = 0
 			fgcol = -1
@@ -231,6 +234,49 @@ class Screen:
 							elif self.debug:
 								raise Exception('Unsupported SGR %d' % int(a))
 						w.win.attrset(mode | self.getcolor(fgcol, bgcol))
+					elif ord(func) in range(ord('A'), ord('H')): # cursor-related
+						if func != 'H':
+							(y, x) = w.win.getyx()
+						max = w.win.getmaxyx()
+						if args[0] != '':
+							arg = int(args[0])
+						else:
+							arg = 1
+
+						if w.newline: # we need not to delay the newline now
+							w.win.addstr('\n')
+							w.newline = False
+
+						if func in ['A', 'F']:
+							y -= arg
+						elif func in ['B', 'E']:
+							y += arg
+						elif func == 'C':
+							x += arg
+						elif func == 'D':
+							x -= arg
+						elif func == 'G':
+							x = arg - 1
+						elif func == 'H':
+							y = arg - 1
+							if args[1] != '':
+								x = int(args[1]) - 1
+							else:
+								x = 0
+						if func in ['E', 'F']:
+							x = 1
+
+						# sanity checks
+						if y < 0:
+							y = 0
+						elif y >= max[0]: # XXX: scrolling?
+							y = max[0] - 1
+						if x < 0:
+							x = 0
+						elif x >= max[1]: # XXX: wrapping?
+							x = max[1] - 1
+
+						w.win.move(y, x)
 					elif self.debug:
 						raise Exception('Unsupported func %s (args: %s)' % (func, args))
 
