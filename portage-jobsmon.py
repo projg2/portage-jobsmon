@@ -8,7 +8,7 @@ MY_PV='0.1'
 import portage
 
 import pyinotify
-import curses, locale
+import curses, locale, re
 
 from optparse import OptionParser
 import sys, time, fcntl, errno, glob
@@ -21,6 +21,7 @@ class Screen:
 		self.sbar = None
 		self.windows = []
 		self.inactive = []
+		self.csiregex = re.compile(r'\x1b\[((?:\d*;)*\d*[a-zA-Z@`])')
 		self.firstpdir = firstpdir
 		self.redraw()
 
@@ -142,7 +143,12 @@ class Screen:
 			if w.newline:
 				text = text[:-1]
 
-			w.win.addstr(text)
+			# strip ECMA-48 CSI
+			ptext = self.csiregex.split(text)
+			for i in range(len(ptext)):
+				if i % 2 == 0:
+					w.win.addstr(ptext[i])
+
 			w.win.refresh()
 
 	def checkact(self, timeout):
