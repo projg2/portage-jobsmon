@@ -244,10 +244,6 @@ class Screen:
 						else:
 							arg = 1
 
-						if w.newline: # we need not to delay the newline now
-							w.win.addstr('\n')
-							w.newline = False
-
 						if func in ['A', 'F']:
 							y -= arg
 						elif func in ['B', 'E']:
