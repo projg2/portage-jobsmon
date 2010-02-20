@@ -21,7 +21,7 @@ class Screen:
 		self.sbar = None
 		self.windows = []
 		self.inactive = []
-		self.colors = {}
+		self.colors = {(-1, -1): 0}
 		self.csiregex = re.compile(r'\x1b\[((?:\d*;)*\d*[a-zA-Z@`])')
 		self.firstpdir = firstpdir
 		self.debug = debug
@@ -129,7 +129,11 @@ class Screen:
 
 	def getcolor(self, fg, bg):
 		if (fg, bg) not in self.colors.keys():
-			n = len(self.colors) + 1
+			n = len(self.colors)
+			if n >= curses.COLOR_PAIRS:
+				if self.debug:
+					raise Exception('COLOR_PAIRS (%d) exceeded, no more space for (%d, %d)' % (curses.COLOR_PAIRS, fg, bg))
+				return curses.color_pair(0)
 			curses.init_pair(n, fg, bg)
 			self.colors[(fg, bg)] = n
 
