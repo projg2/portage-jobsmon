@@ -86,7 +86,7 @@ class Screen:
 			del w.nwin
 
 		self.root.clear()
-		self.root.refresh()
+		self.root.noutrefresh()
 
 		self.sbar = curses.newwin(1, width, height - 1, 0)
 		self.sbar.addstr(0, 0, 'portage-jobsmon.py', curses.A_BOLD)
@@ -100,7 +100,7 @@ class Screen:
 			else:
 				self.sbar.addstr(str(jobcount), curses.A_BOLD)
 				self.sbar.addstr(' parallel merges)')
-		self.sbar.refresh()
+		self.sbar.noutrefresh()
 
 		jobcount -= len(self.inactive)
 
@@ -138,7 +138,7 @@ class Screen:
 					w.nwin.addstr(0, 0, '[%s]' % '/'.join(dir[1:3]))
 					if dir[0] != self.firstpdir:
 						w.nwin.addstr(' (in %s)' % dir[0], curses.A_DIM)
-					w.nwin.refresh()
+					w.nwin.noutrefresh()
 
 					jobcount -= 1
 				else: # job won't fit on the screen
@@ -148,6 +148,8 @@ class Screen:
 			for w in self.inactive:
 				w.win = None
 				w.nwin = None
+
+		curses.doupdate()
 
 	def getcolor(self, fg, bg):
 		if (fg, bg) not in self.colors.keys():
