@@ -13,6 +13,25 @@ import curses, locale, re
 import optparse
 import sys, time, fcntl, errno, glob
 
+def check_lock(path):
+	try:
+		lockf = open(path, 'r+')
+	except OSError:
+		return False
+
+	try:
+		fcntl.lockf(lockf.fileno(), fcntl.LOCK_EX|fcntl.LOCK_NB)
+	except IOError as e:
+		lockf.close()
+		if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
+			return True
+		else:
+			raise
+	else: # file not locked? probably stale
+		fcntl.lockf(lockf.fileno(), fcntl.LOCK_UN)
+		lockf.close()
+	return False
+
 class Screen:
 	def __init__(self, root, firstpdir, debug):
 		curses.use_default_colors()
@@ -27,12 +46,15 @@ class Screen:
 		self.debug = debug
 		self.redraw()
 
-	def addwin(self, win, basedir):
+	def addwin(self, win, basedir, lockfn):
 		win.win = None
 		win.nwin = None
 		win.basedir = basedir
+		win.lockfn = lockfn
 		win.backlog = ''
 		win.activity = time.time()
+		win.lockcheck = win.activity
+		win.expectclose = 0
 		self.windows.append(win)
 		self.redraw()
 
@@ -279,9 +301,10 @@ class Screen:
 
 			w.win.refresh()
 
-	def checkact(self, acttimeout, pullinterval):
+	def checkact(self, pullinterval, acttimeout, lockcheckint):
 		ts = time.time()
 		redraw = False
+		winrem = []
 
 		for w in self.windows:
 			if pullinterval != 0 and ts - w.pullts >= pullinterval:
@@ -292,6 +315,16 @@ class Screen:
 			if acttimeout != 0 and w not in self.inactive and ts - w.activity >= acttimeout:
 				self.inactive.append(w)
 				redraw = True
+
+			if (acttimeout == 0 or w in self.inactive) and ts - w.lockcheck >= lockcheckint:
+				w.expectclose += 1
+				if not check_lock(w.lockfn):
+					winrem.append(w)
+				else:
+					w.lockcheck = time.time()
+
+		for w in winrem:
+			self.delwin(w)
 
 		if redraw:
 			self.redraw()
@@ -355,25 +388,6 @@ def cursesmain(cscr, opts, args):
 
 	wm = pyinotify.WatchManager()
 
-	def check_lock(path):
-		try:
-			lockf = open(path, 'r+')
-		except OSError:
-			return False
-
-		try:
-			fcntl.lockf(lockf.fileno(), fcntl.LOCK_EX|fcntl.LOCK_NB)
-		except IOError as e:
-			lockf.close()
-			if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
-				return True
-			else:
-				raise
-		else: # file not locked? probably stale
-			fcntl.lockf(lockf.fileno(), fcntl.LOCK_UN)
-			lockf.close()
-		return False
-
 	def window_add(dir):
 		basedir = '/'.join(dir[0:3])
 		fn = '/'.join(dir)
@@ -384,9 +398,9 @@ def cursesmain(cscr, opts, args):
 				w = FileTailer(fn)
 			except IOError:
 				return None
-			scr.addwin(w, basedir)
 
 			lockfn = '%s/%s/.%s.portage_lockfile' % tuple(dir[0:3])
+			scr.addwin(w, basedir, lockfn)
 			wm.add_watch(lockfn, pyinotify.IN_CLOSE_WRITE)
 		else:
 			w.reopen()
@@ -432,11 +446,14 @@ def cursesmain(cscr, opts, args):
 
 			w = scr.findwin(basedir)
 			if w is not None:
-				scr.delwin(w)
-				del w
+				if w.expectclose > 0:
+					w.expectclose -= 1
+				else:
+					scr.delwin(w)
+					del w
 
 	def timeriter(sth):
-		scr.checkact(opts.inact, opts.pullint)
+		scr.checkact(opts.pullint, opts.inact, opts.lockcheck)
 
 	np = Inotifier()
 	n = pyinotify.Notifier(wm, np, timeout = opts.timeout * 1000)
@@ -462,6 +479,8 @@ def main(argv):
 	og = optparse.OptionGroup(parser, 'Fine-tuning')
 	og.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
 			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
+	og.add_option('-l', '--lock-check-interval', action='store', dest='lockcheck', type='float', default=15,
+			help='Interval between lockfile checks on inactive (or active if inactivity timeout disabled) windows')
 	og.add_option('-p', '--pull-interval', action='store', dest='pullint', type='float', default=10,
 			help="Max interval between two consecutive pulls; forces pulling if inotify didn't notice any I/O (def: 10 s)")
 	og.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
