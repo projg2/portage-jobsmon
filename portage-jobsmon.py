@@ -303,8 +303,7 @@ class Screen:
 
 			w.win.refresh()
 
-	def checkact(self, pullinterval, acttimeout, lockcheckint):
-		ts = time.time()
+	def checkact(self, ts, pullinterval, acttimeout, lockcheckint):
 		redraw = False
 		winrem = []
 
@@ -389,6 +388,7 @@ def cursesmain(cscr, opts, args):
 		return False
 
 	wm = pyinotify.WatchManager()
+	lockfindts = [0]
 
 	def window_add(dir):
 		basedir = '/'.join(dir[0:3])
@@ -409,20 +409,21 @@ def cursesmain(cscr, opts, args):
 		wm.add_watch(fn, pyinotify.IN_MODIFY)
 		return w
 
-	def find_locks():
+	def find_locks(ts):
 		for d in pdir:
 			for f in glob.glob('%s/*/.*.portage_lockfile' % d):
 				assert(f.startswith(d))
 				assert(f.endswith('.portage_lockfile'))
-				if check_lock(f):
-					dir = f[len(d)+1:-17].split('/.', 1)
-					dir.insert(0, d)
+				dir = f[len(d)+1:-17].split('/.', 1)
+				dir.insert(0, d)
+				if scr.findwin('/'.join(dir)) is None and check_lock(f):
 					dir.extend(['temp', 'build.log'])
 					w = window_add(dir)
 					if w is not None:
 						data = w.pull()
 						if data is not None:
 							scr.append(w, data)
+		lockfindts[0] = ts
 
 	class Inotifier(pyinotify.ProcessEvent):
 		def process_IN_CREATE(self, ev):
@@ -431,6 +432,7 @@ def cursesmain(cscr, opts, args):
 				if dir is not None:
 					if len(dir) == 5 and dir[3] == 'temp' and dir[4] == 'build.log':
 						window_add(dir)
+						lockfindts[0] = time.time()
 
 		def process_IN_MODIFY(self, ev):
 			dir = ppath(ev.pathname)
@@ -455,12 +457,15 @@ def cursesmain(cscr, opts, args):
 					del w
 
 	def timeriter(sth):
-		scr.checkact(opts.pullint, opts.inact, opts.lockcheck)
+		ts = time.time()
+		scr.checkact(ts, opts.pullint, opts.inact, opts.lockcheck)
+		if opts.lockfind != 0 and ts - lockfindts[0] > opts.lockfind:
+			find_locks(ts)
 
 	np = Inotifier()
 	n = pyinotify.Notifier(wm, np, timeout = opts.timeout * 1000)
 	if not opts.omitrunning:
-		find_locks()
+		find_locks(time.time())
 	for t in tempdir:
 		wm.add_watch(t, pyinotify.IN_CREATE,
 				rec=True, auto_add=True, exclude_filter=pfilter)
@@ -482,7 +487,9 @@ def main(argv):
 	og.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
 			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
 	og.add_option('-l', '--lock-check-interval', action='store', dest='lockcheck', type='float', default=15,
-			help='Interval between lockfile checks on inactive (or active if inactivity timeout disabled) windows')
+			help='Interval between lockfile checks on inactive (or active if inactivity timeout disabled) windows (def: 15 s)')
+	og.add_option('-n', '--newmerge-check-interval', action='store', dest='lockfind', type='float', default=45,
+			help="Interval of scanning the temporary directories for new merges if inotify doesn't notice such (def: 45 s)")
 	og.add_option('-p', '--pull-interval', action='store', dest='pullint', type='float', default=10,
 			help="Max interval between two consecutive pulls; forces pulling if inotify didn't notice any I/O (def: 10 s)")
 	og.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
