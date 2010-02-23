@@ -45,6 +45,7 @@ class Screen:
 		self.csiregex = re.compile(r'\x1b\[((?:\d*;)*\d*[a-zA-Z@`])')
 		self.firstpdir = firstpdir
 		self.debug = debug
+		self.encode = codecs.getencoder(locale.nl_langinfo(locale.CODESET))
 		self.redraw()
 
 	def addwin(self, win, basedir, lockfn = None):
@@ -142,7 +143,7 @@ class Screen:
 					if w.basedir == '_fetch':
 						w.nwin.addstr(0, 0, '(parallel fetch)')
 					else:
-						dir = w.basedir.rsplit('/', 2)
+						dir = [self.encode(x, 'replace')[0] for x in w.basedir.rsplit('/', 2)]
 						w.nwin.addstr(0, 0, '[%s]' % '/'.join(dir[1:3]))
 						if dir[0] != self.firstpdir:
 							w.nwin.addstr(' (in %s)' % dir[0], curses.A_DIM)
@@ -196,7 +197,7 @@ class Screen:
 			ptext = self.csiregex.split(text)
 			for i in range(len(ptext)):
 				if i % 2 == 0:
-					w.win.addstr(ptext[i])
+					w.win.addstr(self.encode(ptext[i], 'replace')[0])
 				else:
 					x = curses
 					attrmapping = [None, x.A_BOLD, x.A_DIM, None,
@@ -320,7 +321,14 @@ class FileTailer:
 	def reopen(self):
 		if self.file is not None:
 			self.file.close()
-		self.file = codecs.open(self.fn, 'rb', locale.nl_langinfo(locale.CODESET), 'ignore')
+
+		# Well, in fact we could open a file as normal bytestream and pass the data
+		# to ncurses without decoding and then encoding it back but we would then
+		# pass broken characters too (e.g. due to seeking). And we wouldn't support
+		# running portage-jobsmon on terminal with different character encoding
+		# than one used in ebuilds (utf-8).
+
+		self.file = codecs.open(self.fn, 'rb', 'utf-8', 'ignore')
 		if self.scr is not None:
 			try:
 				self.file.seek(-self.scr.backloglen, os.SEEK_END)
