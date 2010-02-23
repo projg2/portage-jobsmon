@@ -319,7 +319,7 @@ class Screen:
 			if pullinterval != 0 and ts - w.pullts >= pullinterval:
 				data = w.pull()
 				if data is not None:
-					w.append(data)
+					self.append(w, data)
 
 			if acttimeout != 0 and w not in self.inactive and ts - w.activity >= acttimeout:
 				self.inactive.append(w)
