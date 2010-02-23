@@ -3,7 +3,7 @@
 # Monitor current builds and display their logs on split-screen basis
 # (C) 2010 Michał Górny, distributed under the terms of the 3-clause BSD license
 
-MY_PV='0.1'
+MY_PV='0.2'
 
 import portage
 
