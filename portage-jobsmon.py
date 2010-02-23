@@ -46,7 +46,7 @@ class Screen:
 		self.debug = debug
 		self.redraw()
 
-	def addwin(self, win, basedir, lockfn):
+	def addwin(self, win, basedir, lockfn = None):
 		win.win = None
 		win.nwin = None
 		win.basedir = basedir
@@ -88,17 +88,21 @@ class Screen:
 		self.root.clear()
 		self.root.noutrefresh()
 
+		mergecount = jobcount
+		if self.findwin('_fetch') is not None:
+			mergecount -= 1
+
 		self.sbar = curses.newwin(1, width, height - 1, 0)
 		self.sbar.addstr(0, 0, 'portage-jobsmon.py', curses.A_BOLD)
-		if jobcount == 0:
+		if mergecount == 0:
 			self.sbar.addstr(' (waiting for some merge to start)')
 		else:
 			self.sbar.addstr(' (monitoring ')
-			if jobcount == 1:
+			if mergecount == 1:
 				self.sbar.addstr('single', curses.A_BOLD)
 				self.sbar.addstr(' merge process)')
 			else:
-				self.sbar.addstr(str(jobcount), curses.A_BOLD)
+				self.sbar.addstr(str(mergecount), curses.A_BOLD)
 				self.sbar.addstr(' parallel merges)')
 		self.sbar.noutrefresh()
 
@@ -134,10 +138,13 @@ class Screen:
 					starty += jobrows
 					w.nwin = curses.newwin(1, width, starty - 1, 0)
 					w.nwin.bkgd(' ', curses.A_REVERSE)
-					dir = w.basedir.rsplit('/', 2)
-					w.nwin.addstr(0, 0, '[%s]' % '/'.join(dir[1:3]))
-					if dir[0] != self.firstpdir:
-						w.nwin.addstr(' (in %s)' % dir[0], curses.A_DIM)
+					if w.basedir == '_fetch':
+						w.nwin.addstr(0, 0, '(parallel fetch)')
+					else:
+						dir = w.basedir.rsplit('/', 2)
+						w.nwin.addstr(0, 0, '[%s]' % '/'.join(dir[1:3]))
+						if dir[0] != self.firstpdir:
+							w.nwin.addstr(' (in %s)' % dir[0], curses.A_DIM)
 					w.nwin.noutrefresh()
 
 					jobcount -= 1
@@ -317,7 +324,7 @@ class Screen:
 				self.inactive.append(w)
 				redraw = True
 
-			if (acttimeout == 0 or w in self.inactive) and ts - w.lockcheck >= lockcheckint:
+			if w.lockfn is not None and (acttimeout == 0 or w in self.inactive) and ts - w.lockcheck >= lockcheckint:
 				w.expectclose += 1
 				if not check_lock(w.lockfn):
 					winrem.append(w)
@@ -426,6 +433,8 @@ def cursesmain(cscr, opts, args):
 		lockfindts[0] = ts
 
 	class Inotifier(pyinotify.ProcessEvent):
+		fetchlog = '/var/log/emerge-fetch.log'
+
 		def process_IN_CREATE(self, ev):
 			if not ev.dir:
 				dir = ppath(ev.pathname)
@@ -435,18 +444,31 @@ def cursesmain(cscr, opts, args):
 						lockfindts[0] = time.time()
 
 		def process_IN_MODIFY(self, ev):
-			dir = ppath(ev.pathname)
-			basedir = '/'.join(dir[0:3])
+			if ev.pathname == self.fetchlog:
+				w = scr.findwin('_fetch')
+				if w is None:
+					w = FileTailer(self.fetchlog)
+					scr.addwin(w, '_fetch')
+			else:
+				dir = ppath(ev.pathname)
+				if dir is None:
+					return
+				basedir = '/'.join(dir[0:3])
+				w = scr.findwin(basedir)
 
-			w = scr.findwin(basedir)
 			if w is not None:
 				data = w.pull()
 				if data is not None:
 					scr.append(w, data)
 
 		def process_IN_CLOSE_WRITE(self, ev):
-			dir = ppath(ev.pathname)
-			basedir = '%s/%s/%s' % (dir[0], dir[1], dir[2][1:-17])
+			if ev.pathname == self.fetchlog:
+				basedir = '_fetch'
+			else:
+				dir = ppath(ev.pathname)
+				if dir is None:
+					return
+				basedir = '%s/%s/%s' % (dir[0], dir[1], dir[2][1:-17])
 
 			w = scr.findwin(basedir)
 			if w is not None:
@@ -469,6 +491,8 @@ def cursesmain(cscr, opts, args):
 	for t in tempdir:
 		wm.add_watch(t, pyinotify.IN_CREATE,
 				rec=True, auto_add=True, exclude_filter=pfilter)
+	if opts.watchfetch:
+		wm.add_watch(np.fetchlog, pyinotify.IN_MODIFY | pyinotify.IN_CLOSE_WRITE)
 	n.loop(callback = timeriter)
 
 def main(argv):
@@ -478,6 +502,8 @@ def main(argv):
 		)
 	parser.add_option('-D', '--debug', action='store_true', dest='debug', default=False,
 			help='Enable unsupported action debugging (raises exceptions when unsupported escape sequence is found)')
+	parser.add_option('-F', '--ignore-fetchlog', action='store_false', dest='watchfetch', default=True,
+			help='Omit monitoring /var/log/emerge-fetch.log for parallel fetch progress')
 	parser.add_option('-o', '--omit-running', action='store_true', dest='omitrunning', default=False,
 			help='Omit catching all running emerges during startup, watch only those started after the program')
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
