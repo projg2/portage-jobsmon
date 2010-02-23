@@ -34,7 +34,7 @@ def check_lock(path):
 	return False
 
 class Screen:
-	def __init__(self, root, firstpdir, debug):
+	def __init__(self, root, firstpdir, opts):
 		curses.use_default_colors()
 
 		self.root = root
@@ -42,9 +42,9 @@ class Screen:
 		self.windows = []
 		self.inactive = []
 		self.colors = {(-1, -1): 0}
-		self.csiregex = re.compile(r'\x1b\[((?:\d*;)*\d*[a-zA-Z@`])')
+		self.escregex = re.compile(r'(\x1b\[(?:\d*;)*\d*[a-zA-Z@`]|\07)')
 		self.firstpdir = firstpdir
-		self.debug = debug
+		self.opts = opts
 		self.encode = codecs.getencoder(locale.nl_langinfo(locale.CODESET))
 		self.redraw()
 
@@ -164,7 +164,7 @@ class Screen:
 		if (fg, bg) not in self.colors.keys():
 			n = len(self.colors)
 			if n >= curses.COLOR_PAIRS:
-				if self.debug:
+				if self.opts.debug:
 					raise Exception('COLOR_PAIRS (%d) exceeded, no more space for (%d, %d)' % (curses.COLOR_PAIRS, fg, bg))
 				return curses.color_pair(0)
 			curses.init_pair(n, fg, bg)
@@ -194,11 +194,16 @@ class Screen:
 			mode = 0
 			fgcol = -1
 			bgcol = -1
-			ptext = self.csiregex.split(text)
+			ptext = self.escregex.split(text)
 			for i in range(len(ptext)):
 				if i % 2 == 0:
 					w.win.addstr(self.encode(ptext[i], 'replace')[0])
-				else:
+				elif ptext[i][0] == '\07':
+					if self.opts.vabell or not self.opts.vbell:
+						curses.beep()
+					if self.opts.vbell:
+						curses.flash()
+				else: # \e[
 					x = curses
 					attrmapping = [None, x.A_BOLD, x.A_DIM, None,
 							x.A_UNDERLINE, x.A_BLINK, None, x.A_REVERSE]
@@ -206,7 +211,7 @@ class Screen:
 							x.COLOR_BLUE, x.COLOR_MAGENTA, x.COLOR_CYAN, x.COLOR_WHITE]
 
 					func = ptext[i][-1]
-					args = ptext[i][:-1].split(';')
+					args = ptext[i][2:-1].split(';')
 					if func == 'm': # SGR
 						for a in [int(x, 10) for x in args]:
 							if a == 0:
@@ -231,7 +236,7 @@ class Screen:
 								bgcol = colrmapping[a % 40]
 							elif a == 49:
 								bgcol = -1
-							elif self.debug:
+							elif self.opts.debug:
 								raise Exception('Unsupported SGR %d' % a)
 						w.win.attrset(mode | self.getcolor(fgcol, bgcol))
 					elif ord(func) in range(ord('A'), ord('H')): # cursor-related
@@ -273,7 +278,7 @@ class Screen:
 							x = max[1] - 1
 
 						w.win.move(y, x)
-					elif self.debug:
+					elif self.opts.debug:
 						raise Exception('Unsupported func %s (args: %s)' % (func, args))
 
 			w.win.refresh()
@@ -350,7 +355,7 @@ def cursesmain(cscr, opts, args):
 	pdir = ['%s/portage' % x for x in tempdir]
 	firstpdir = pdir[0] # the default one
 	pdir.sort(key=len, reverse=True)
-	scr = Screen(cscr, firstpdir, opts.debug)
+	scr = Screen(cscr, firstpdir, opts)
 
 	def ppath(dir):
 		for pd in pdir:
@@ -490,6 +495,13 @@ def main(argv):
 	parser.add_option('-t', '--tempdir', action='append', dest='tempdir',
 			help="Temporary directory to watch (without the 'portage/' suffix); if specified multiple times, all specified directories will be watched; if not specified, defaults to ${PORTAGE_TEMPDIR}")
 
+	og = optparse.OptionGroup(parser, 'Appearance')
+	og.add_option('-v', '--visual-bell', action='store_true', dest='vbell', default=False,
+			help='Use visual bell (flash the screen) instead of audible one')
+	og.add_option('-V', '--visual-and-audible-bell', action='store_true', dest='vabell', default=False,
+			help='Use both visual and audible bell')
+	parser.add_option_group(og)
+
 	og = optparse.OptionGroup(parser, 'Fine-tuning')
 	og.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
 			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
@@ -501,9 +513,10 @@ def main(argv):
 			help="Max interval between two consecutive pulls; forces pulling if inotify didn't notice any I/O (def: 10 s)")
 	og.add_option('-T', '--timeout', action='store', dest='timeout', type='float', default=2,
 			help='The timeout of the poll() call, and thus the max time between consecutive timer loop calls (def: 2 s)')
-
 	parser.add_option_group(og)
+
 	(opts, args) = parser.parse_args(args = argv[1:])
+	opts.vbell |= opts.vabell
 
 	locale.setlocale(locale.LC_ALL, '')
 	try:
