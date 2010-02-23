@@ -198,6 +198,12 @@ class Screen:
 				if i % 2 == 0:
 					w.win.addstr(ptext[i])
 				else:
+					x = curses
+					attrmapping = [None, x.A_BOLD, x.A_DIM, None,
+							x.A_UNDERLINE, x.A_BLINK, None, x.A_REVERSE]
+					colrmapping = [x.COLOR_BLACK, x.COLOR_RED, x.COLOR_GREEN, x.COLOR_YELLOW,
+							x.COLOR_BLUE, x.COLOR_MAGENTA, x.COLOR_CYAN, x.COLOR_WHITE]
+
 					func = ptext[i][-1]
 					args = ptext[i][:-1].split(';')
 					if func == 'm': # SGR
@@ -206,62 +212,22 @@ class Screen:
 								mode = 0
 								fgcol = -1
 								bgcol = -1
-							elif a == 1:
-								mode |= curses.A_BOLD
-							elif a == 2:
-								mode |= curses.A_DIM
-							elif a == 4:
-								mode |= curses.A_UNDERLINE
-							elif a == 5:
-								mode |= curses.A_BLINK
-							elif a == 7:
-								mode |= curses.A_REVERSE
-							elif a == 22:
-								mode &= ~(curses.A_BOLD|curses.A_DIM)
-							elif a == 24:
-								mode &= ~curses.A_UNDERLINE
-							elif a == 25:
-								mode &= ~curses.A_BLINK
-							elif a == 27:
-								mode &= ~curses.A_REVERSE
-							elif a == 30:
-								fgcol = curses.COLOR_BLACK
-							elif a == 31:
-								fgcol = curses.COLOR_RED
-							elif a == 32:
-								fgcol = curses.COLOR_GREEN
-							elif a == 33:
-								fgcol = curses.COLOR_YELLOW
-							elif a == 34:
-								fgcol = curses.COLOR_BLUE
-							elif a == 35:
-								fgcol = curses.COLOR_MAGENTA
-							elif a == 36:
-								fgcol = curses.COLOR_CYAN
-							elif a == 37:
-								fgcol = curses.COLOR_WHITE
+							elif a in [1,2,4,5,7]:
+								mode |= attrmapping[a]
+							elif a in [21,22]:
+								mode &= ~(attrmapping[1] | attrmapping[2])
+							elif a in [24,25,27]:
+								mode &= ~attrmapping[a % 20]
+							elif a >= 30 and a <= 37:
+								fgcol = colrmapping[a % 30]
 							elif a == 38:
 								mode |= curses.A_UNDERLINE
 								fgcol = -1
 							elif a == 39:
 								mode &= ~curses.A_UNDERLINE
 								fgcol = -1
-							elif a == 40:
-								bgcol = curses.COLOR_BLACK
-							elif a == 41:
-								bgcol = curses.COLOR_RED
-							elif a == 42:
-								bgcol = curses.COLOR_GREEN
-							elif a == 43:
-								bgcol = curses.COLOR_YELLOW
-							elif a == 44:
-								bgcol = curses.COLOR_BLUE
-							elif a == 45:
-								bgcol = curses.COLOR_MAGENTA
-							elif a == 46:
-								bgcol = curses.COLOR_CYAN
-							elif a == 47:
-								bgcol = curses.COLOR_WHITE
+							elif a >= 40 and a <= 47:
+								bgcol = colrmapping[a % 40]
 							elif a == 49:
 								bgcol = -1
 							elif self.debug:
