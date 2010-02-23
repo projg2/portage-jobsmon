@@ -200,7 +200,7 @@ class Screen:
 					func = ptext[i][-1]
 					args = ptext[i][:-1].split(';')
 					if func == 'm': # SGR
-						for a in [int(x) for x in args]:
+						for a in [int(x, 10) for x in args]:
 							if a == 0:
 								mode = 0
 								fgcol = -1
@@ -264,14 +264,14 @@ class Screen:
 							elif a == 49:
 								bgcol = -1
 							elif self.debug:
-								raise Exception('Unsupported SGR %d' % int(a))
+								raise Exception('Unsupported SGR %d' % a)
 						w.win.attrset(mode | self.getcolor(fgcol, bgcol))
 					elif ord(func) in range(ord('A'), ord('H')): # cursor-related
 						if func != 'H':
 							(y, x) = w.win.getyx()
 						max = w.win.getmaxyx()
 						if args[0] != '':
-							arg = int(args[0])
+							arg = int(args[0], 10)
 						else:
 							arg = 1
 
