@@ -11,7 +11,8 @@ import pyinotify
 import curses, locale, re
 
 import optparse
-import sys, time, fcntl, errno, glob
+import sys, os, codecs
+import time, fcntl, errno, glob
 
 def check_lock(path):
 	try:
@@ -338,10 +339,11 @@ class Screen:
 			self.redraw()
 
 class FileTailer:
-	def __init__(self, fn):
+	def __init__(self, fn, scr = None):
 		self.fn = fn
 		self.file = None
 		self.pullts = time.time()
+		self.scr = scr
 
 		self.reopen()
 
@@ -352,7 +354,12 @@ class FileTailer:
 	def reopen(self):
 		if self.file is not None:
 			self.file.close()
-		self.file = open(self.fn, 'r')
+		self.file = codecs.open(self.fn, 'rb', locale.nl_langinfo(locale.CODESET), 'ignore')
+		if self.scr is not None:
+			try:
+				self.file.seek(-self.scr.backloglen, os.SEEK_END)
+			except IOError:
+				pass # seek() can fail
 
 	def pull(self):
 		self.pullts = time.time()
@@ -404,7 +411,7 @@ def cursesmain(cscr, opts, args):
 		w = scr.findwin(basedir)
 		if w is None:
 			try:
-				w = FileTailer(fn)
+				w = FileTailer(fn, scr)
 			except IOError:
 				return None
 
@@ -447,7 +454,7 @@ def cursesmain(cscr, opts, args):
 			if ev.pathname == self.fetchlog:
 				w = scr.findwin('_fetch')
 				if w is None:
-					w = FileTailer(self.fetchlog)
+					w = FileTailer(self.fetchlog, scr)
 					scr.addwin(w, '_fetch')
 			else:
 				dir = ppath(ev.pathname)
