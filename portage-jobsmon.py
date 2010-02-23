@@ -109,11 +109,11 @@ class Screen:
 		jobcount -= len(self.inactive)
 
 		if jobcount > 0:
-			jobrows = (height - 1) / jobcount
+			jobrows = int((height - 1) / jobcount)
 			jobrowsleft = (height - 1) % jobcount
 			if jobrows < 4:
 				jobrows = 4
-				jobcount = (height - 1) / jobrows
+				jobcount = int((height - 1) / jobrows)
 				jobrowsleft = (height - 1) % jobcount
 			if jobrowsleft > 0:
 				jobrowsleft += 1
