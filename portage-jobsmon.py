@@ -61,12 +61,16 @@ class Screen:
 		self.redraw()
 
 	def delwin(self, win):
-		del win.win
-		del win.nwin
-		self.windows.remove(win)
-		if win in self.inactive:
-			self.inactive.remove(win)
-		self.redraw()
+		if win.removets is not None or self.opts.closedelay == 0:
+			del win.win
+			del win.nwin
+			self.windows.remove(win)
+			if win in self.inactive:
+				self.inactive.remove(win)
+			self.redraw()
+		else:
+			win.removets = time.time() + self.opts.closedelay
+			self.redraw()
 
 	def findwin(self, basedir):
 		for w in self.windows:
@@ -83,16 +87,15 @@ class Screen:
 		jobcount = len(self.windows)
 
 		del self.sbar
+		mergecount = 0
 		for w in self.windows:
 			del w.win
 			del w.nwin
+			if not w.basedir.startswith('_') and w.removets is None:
+				mergecount += 1
 
 		self.root.clear()
 		self.root.noutrefresh()
-
-		mergecount = jobcount
-		if self.findwin('_fetch') is not None:
-			mergecount -= 1
 
 		self.sbar = curses.newwin(1, width, height - 1, 0)
 		self.sbar.addstr(0, 0, 'portage-jobsmon.py', curses.A_BOLD)
@@ -147,6 +150,8 @@ class Screen:
 						w.nwin.addstr(0, 0, '[%s]' % '/'.join(dir[1:3]))
 						if dir[0] != self.firstpdir:
 							w.nwin.addstr(' (in %s)' % dir[0], curses.A_DIM)
+					if w.removets is not None:
+						w.nwin.addstr(' (closed)')
 					w.nwin.noutrefresh()
 
 					jobcount -= 1
@@ -297,7 +302,10 @@ class Screen:
 				self.inactive.append(w)
 				redraw = True
 
-			if w.lockfn is not None and (acttimeout == 0 or w in self.inactive) and ts - w.lockcheck >= lockcheckint:
+			if w.removets is not None:
+				if ts >= w.removets:
+					winrem.append(w)
+			elif w.lockfn is not None and (acttimeout == 0 or w in self.inactive) and ts - w.lockcheck >= lockcheckint:
 				w.expectclose += 1
 				if not check_lock(w.lockfn):
 					winrem.append(w)
@@ -324,6 +332,7 @@ class FileTailer:
 			self.file.close()
 
 	def reopen(self):
+		self.removets = None
 		if self.file is not None:
 			self.file.close()
 
@@ -399,6 +408,7 @@ def cursesmain(cscr, opts, args):
 			wm.add_watch(lockfn, pyinotify.IN_CLOSE_WRITE)
 		else:
 			w.reopen()
+			scr.redraw()
 		wm.add_watch(fn, pyinotify.IN_MODIFY)
 		return w
 
@@ -505,6 +515,8 @@ def main(argv):
 	og = optparse.OptionGroup(parser, 'Fine-tuning')
 	og.add_option('-A', '--inactivity-timeout', action='store', dest='inact', type='float', default=30,
 			help='Timeout after which inactive emerge process will be shifted off the screen (def: 30 s)')
+	og.add_option('-c', '--close-delay', action='store', dest='closedelay', type='float', default=10,
+			help='Delay before closing finished merge window (def: 10 s)')
 	og.add_option('-l', '--lock-check-interval', action='store', dest='lockcheck', type='float', default=15,
 			help='Interval between lockfile checks on inactive (or active if inactivity timeout disabled) windows (def: 15 s)')
 	og.add_option('-n', '--newmerge-check-interval', action='store', dest='lockfind', type='float', default=45,
