@@ -17,7 +17,7 @@ import time, fcntl, errno, glob
 def check_lock(path):
 	try:
 		lockf = open(path, 'r+')
-	except OSError:
+	except IOError:
 		return False
 
 	try:
