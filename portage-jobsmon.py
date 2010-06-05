@@ -403,7 +403,15 @@ def cursesmain(cscr, opts, args):
 
 	def find_locks(ts):
 		for d in pdir:
+			fl = []
 			for f in glob.glob('%s/*/.*.portage_lockfile' % d):
+				try:
+					mtime = os.stat(f).st_mtime
+				except OSError:
+					mtime = 0
+				fl.append((mtime, f))
+			fl.sort(reverse = True)
+			for mtime, f in fl:
 				assert(f.startswith(d))
 				assert(f.endswith('.portage_lockfile'))
 				dir = f[len(d)+1:-17].split('/.', 1)
