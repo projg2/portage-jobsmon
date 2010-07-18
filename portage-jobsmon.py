@@ -212,7 +212,12 @@ class Screen:
 					func = ptext[i][-1]
 					args = ptext[i][2:-1].split(';')
 					if func == 'm': # SGR
-						for a in [int(x, 10) for x in args]:
+						for a in args:
+							if a != '':
+								a = int(a, 10)
+							else:
+								a = 0
+
 							if a == 0:
 								mode = 0
 								fgcol = -1
