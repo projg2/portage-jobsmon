@@ -45,7 +45,10 @@ class Screen:
 		self.escregex = re.compile(r'(\x1b\[(?:\d*;)*\d*[a-zA-Z@`]|\07)')
 		self.firstpdir = firstpdir
 		self.opts = opts
-		self.encode = codecs.getencoder(locale.nl_langinfo(locale.CODESET))
+		if sys.version_info[0] < 3:
+			self.encode = codecs.getencoder(locale.nl_langinfo(locale.CODESET))
+		else:
+			self.encode = lambda x,y: (x,)
 		self.redraw()
 
 	def addwin(self, win, basedir, lockfn = None):
