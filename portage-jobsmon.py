@@ -405,8 +405,9 @@ def cursesmain(cscr, opts, args):
 			scr.addwin(w, basedir, lockfn)
 			wm.add_watch(lockfn, pyinotify.IN_CLOSE_WRITE)
 		else:
+			wm.del_watch(w.watchd)
 			w.reopen()
-		wm.add_watch(fn, pyinotify.IN_MODIFY)
+		w.watchd = list(wm.add_watch(fn, pyinotify.IN_MODIFY).values())[0]
 		return w
 
 	def find_locks(ts):
